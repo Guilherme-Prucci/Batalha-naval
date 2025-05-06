@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Aguardando outro jogador</title>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <h1>Aguardando outro jogador...</h1>
+
+  <script>
+    const socket = io();
+    
+    // Entrar na fila assim que a página carregar
+    socket.emit('joinQueue');
+  
+    socket.on('startGame', (roomName) => {
+      localStorage.setItem('sala', roomName);
+      window.location.href = '/batalha-naval.html';
+    });
+    
+  </script>
+</body>
+</html>

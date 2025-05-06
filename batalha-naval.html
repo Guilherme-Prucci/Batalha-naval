@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Batalha Naval</title>
+  <style>
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      font-family: sans-serif;
+      margin: 0;
+      padding: 20px;
+    }
+    .boards {
+      display: flex;
+      gap: 50px;
+      margin-top: 20px;
+    }
+    .board {
+      position: relative;
+      display: grid;
+      grid-template-columns: repeat(10, 30px);
+      grid-template-rows: repeat(10, 30px);
+      gap: 2px;
+      background: #333;
+      padding: 5px;
+      width: max-content;
+    }
+    .cell {
+      width: 30px;
+      height: 30px;
+      background: #a0d2eb;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    .cell.own {
+      background: #006994;
+    }
+    .ship {
+      background: gray;
+      display: flex;
+      cursor: grab;
+      position: absolute;
+      z-index: 10;
+    }
+    .ship.horizontal {
+      height: 30px;
+    }
+    .ship.vertical {
+      width: 30px;
+      flex-direction: column;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Batalha Naval</h1>
+
+  <div class="boards">
+    <div>
+      <h2>Seu Tabuleiro</h2>
+      <div id="own-board" class="board"></div>
+    </div>
+
+    <div>
+      <h2>Tabuleiro Inimigo</h2>
+      <div id="enemy-board" class="board"></div>
+    </div>
+  </div>
+
+  <button id="botao-toggle" class="Pronto">Pronto</button>
+
+  <script>
+    const botao = document.getElementById("botao-toggle");
+
+    botao.addEventListener("click", () => {
+      if (botao.classList.contains("Pronto")) {
+        botao.classList.remove("Pronto");
+        botao.classList.add("Esperar");
+        botao.textContent = "Esperar";
+      } else {
+        botao.classList.remove("Esperar");
+        botao.classList.add("Pronto");
+        botao.textContent = "Pronto";
+      }
+    });
+  </script>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+
+    
+    const socket = io();
+
+    const roomName = localStorage.getItem('sala');
+
+if (!roomName) {
+  alert('Sala não encontrada. Redirecionando...');
+  window.location.href = '/';
+}
+
+socket.emit('joinRoom', roomName);
+
+socket.on('opponentDisconnected', () => {
+  alert('Seu oponente desconectou. Você será redirecionado para a página inicial.');
+  window.location.href = '/';
+});
+
+socket.on('gameStarted', () => {
+  console.log('Jogo iniciado na sala:', roomName);
+});
+
+    const ownBoard = document.getElementById('own-board');
+    const enemyBoard = document.getElementById('enemy-board');
+
+    const cellSize = 32; // 30px + 2px de gap
+
+    function createGrid(boardElement, isOwnBoard) {
+      for (let y = 0; y < 10; y++) {
+        for (let x = 0; x < 10; x++) {
+          const cell = document.createElement('div');
+          cell.classList.add('cell');
+          if (isOwnBoard) cell.classList.add('own');
+          cell.dataset.x = x;
+          cell.dataset.y = y;
+
+          if (!isOwnBoard) {
+            cell.addEventListener('click', () => {
+              console.log(`Atacou posição (${x}, ${y})`);
+              // socket.emit('attack', { x, y });
+            });
+          }
+
+          boardElement.appendChild(cell);
+        }
+      }
+    }
+
+    function createShip(length, top, left, isHorizontal = true) {
+      const ship = document.createElement('div');
+      ship.classList.add('ship');
+      ship.classList.add(isHorizontal ? 'horizontal' : 'vertical');
+      ship.style.width = isHorizontal ? `${length * cellSize - 2}px` : '30px';
+      ship.style.height = isHorizontal ? '30px' : `${length * cellSize - 2}px`;
+      ship.style.top = `${top}px`;
+      ship.style.left = `${left}px`;
+      ship.dataset.length = length;
+      ship.dataset.horizontal = isHorizontal;
+
+      ownBoard.appendChild(ship);
+
+      // Tornar arrastável
+      makeShipDraggable(ship);
+    }
+
+    function makeShipDraggable(ship) {
+      let offsetX, offsetY, dragging = false;
+
+      ship.addEventListener('mousedown', (e) => {
+        dragging = true;
+        offsetX = e.offsetX;
+        offsetY = e.offsetY;
+        ship.style.cursor = 'grabbing';
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        if (!dragging) return;
+        const boardRect = ownBoard.getBoundingClientRect();
+        let x = e.clientX - boardRect.left - offsetX;
+        let y = e.clientY - boardRect.top - offsetY;
+        ship.style.left = `${x}px`;
+        ship.style.top = `${y}px`;
+      });
+
+      document.addEventListener('mouseup', () => {
+        if (!dragging) return;
+        dragging = false;
+        ship.style.cursor = 'grab';
+        snapShipToGrid(ship);
+      });
+
+      ship.addEventListener('dblclick', () => {
+        rotateShip(ship);
+      });
+    }
+
+    function snapShipToGrid(ship) {
+      const boardRect = ownBoard.getBoundingClientRect();
+      let x = parseInt(ship.style.left, 10);
+      let y = parseInt(ship.style.top, 10);
+
+      const isHorizontal = ship.classList.contains('horizontal');
+      const length = parseInt(ship.dataset.length, 10);
+
+      let maxX = (10 - (isHorizontal ? length : 1)) * cellSize;
+      let maxY = (10 - (isHorizontal ? 1 : length)) * cellSize;
+
+      x = Math.max(0, Math.min(x, maxX));
+      y = Math.max(0, Math.min(y, maxY));
+
+      // Alinhar no grid
+      x = (Math.round(x / cellSize) * cellSize) + 5 ;
+      y = (Math.round(y / cellSize) * cellSize) + 5 ;
+
+      ship.style.left = `${x}px`;
+      ship.style.top = `${y}px`;
+    }
+
+    function rotateShip(ship) {
+      const isHorizontal = ship.classList.contains('horizontal');
+      const length = parseInt(ship.dataset.length, 10);
+
+      ship.classList.toggle('horizontal');
+      ship.classList.toggle('vertical');
+      ship.dataset.horizontal = (!isHorizontal).toString();
+
+      if (isHorizontal) {
+        // Virando para vertical
+        ship.style.width = '30px';
+        ship.style.height = `${length * cellSize - 2}px`;
+      } else {
+        // Virando para horizontal
+        ship.style.width = `${length * cellSize - 2}px`;
+        ship.style.height = '30px';
+      }
+
+      // Depois de girar, ajustar no grid
+      snapShipToGrid(ship);
+    }
+
+    createGrid(ownBoard, true);
+    createGrid(enemyBoard, false);
+
+    // Criar os navios
+    createShip(5, 500, 10);
+    createShip(4, 460, 10);  
+    createShip(3, 420, 10); 
+    createShip(3, 380, 10); 
+    createShip(2, 340, 10); 
+
+
+    socket.on('opponentDisconnected', () => {
+      alert('Seu oponente desconectou. Você será redirecionado para a página inicial.');
+      window.location.href = '/';
+    });
+    
+  </script>
+
+</body>
+</html>
